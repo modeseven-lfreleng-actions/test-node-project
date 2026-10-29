@@ -3,11 +3,7 @@
 name: 'Probe Copilot review request'
 # yamllint disable-line rule:truthy
 on:
-  workflow_dispatch:
-    inputs:
-      pr:
-        description: 'Pull request number'
-        required: true
+  pull_request:
 permissions: {}
 jobs:
   probe:
@@ -19,7 +15,7 @@ jobs:
       - name: 'Request via GraphQL requestReviewsByLogin (bot actor)'
         env:
           GH_TOKEN: ${{ github.token }}
-          PR: ${{ inputs.pr }}
+          PR: ${{ github.event.pull_request.number }}
           REPO: ${{ github.repository }}
         run: |
           set -x

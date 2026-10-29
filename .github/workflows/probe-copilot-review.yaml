@@ -1,0 +1,37 @@
+---
+# Throwaway probe: can a non-user actor request a Copilot review?
+name: 'Probe Copilot review request'
+# yamllint disable-line rule:truthy
+on:
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: 'Pull request number'
+        required: true
+permissions: {}
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      contents: read
+    steps:
+      - name: 'Request via GraphQL requestReviewsByLogin (bot actor)'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ inputs.pr }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -x
+          id=$(gh api "repos/$REPO/pulls/$PR" --jq .node_id)
+          gh api graphql -f id="$id" -f query='mutation($id: ID!) { requestReviewsByLogin(input: {pullRequestId: $id, botLogins: ["copilot-pull-request-reviewer[bot]"], union: true}) { pullRequest { reviewRequests(first: 100) { nodes { requestedReviewer { __typename ... on Bot { login } ... on User { login } } } } } } }' || true
+          sleep 5
+          echo "--- requested_reviewers after GraphQL:"
+          gh api "repos/$REPO/pulls/$PR/requested_reviewers"
+          echo "--- REST POST requested_reviewers (bot actor):"
+          gh api -X POST "repos/$REPO/pulls/$PR/requested_reviewers" -f 'reviewers[]=copilot-pull-request-reviewer[bot]' -i 2>&1 | sed -n '1p;/^{/,$p' | head -60 || true
+          sleep 5
+          echo "--- requested_reviewers after REST:"
+          gh api "repos/$REPO/pulls/$PR/requested_reviewers"
+          echo "--- timeline review_request events:"
+          gh api "repos/$REPO/issues/$PR/timeline?per_page=100" --jq '.[] | select(.event|test("review_request")) | "\(.event) by \(.actor.login) -> \(.requested_reviewer.login // "?") at \(.created_at)"'
